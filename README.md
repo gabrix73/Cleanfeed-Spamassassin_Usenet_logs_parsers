@@ -1,1 +1,1 @@
-# Cleanfeed-Spamassassin_Usenet_logs_parsers
+# Cleanfeed_Spamassassin_INND_logs_parsers
