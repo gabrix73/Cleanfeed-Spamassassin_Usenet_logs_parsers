@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistiche INND</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #f9fafb; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .card { background: white; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 1.5rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        th { background-color: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Statistiche INND</h1>
+        <p class="text-gray-600 mb-4">Ultimo aggiornamento: 2025-05-01 16:35:01</p>
+        <div class="card mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Panoramica Generale</h2>
+            <table>
+                <tr><th>Metrica</th><th>Valore</th></tr>
+                <tr><td>Articoli Offerti</td><td>155
+</td></tr>
+                <tr><td>Articoli Accettati</td><td>787
+</td></tr>
+                <tr><td>Articoli Rifiutati</td><td>793
+</td></tr>
+            </table>
+        </div>
+        <div class="card mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Output ctlinnd</h2>
+            <pre class="bg-gray-100 p-4 rounded">Server running
+Allowing remote connections
+Parameters c 10 i 50 (4) l 1000000 o 1010 t 300 H 2 T 60 X 0 normal specified
+Not reserved
+Readers independent enabled
+Perl filtering enabled
+Perl filter stats: Pass: 3463  Reject: 539  Refuse: 1  MD5: 574  PHL: 122  PHN: 142  PHR: 0  FSL: 132
+Python filtering disabled
+</pre>
+        </div>
+        <div class="card">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Grafico Statistiche</h2>
+            <canvas id="inndChart" width="400" height="200"></canvas>
+            <script>
+                const ctx = document.getElementById('inndChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Offerti', 'Accettati', 'Rifiutati'],
+                        datasets: [{
+                            label: 'Statistiche INND',
+                            data: [155
+, 787
+, 793
+],
+                            backgroundColor: ['#3b82f6', '#22c55e', '#ef4444'],
+                            borderColor: ['#2563eb', '#16a34a', '#dc2626'],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            </script>
+        </div>
+    </div>
+</body>
+</html>
