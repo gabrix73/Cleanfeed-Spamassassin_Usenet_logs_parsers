@@ -1,1 +1,601 @@
+#!/usr/bin/perl
+# cleanfeed.local - Enhanced Configuration for 2025
+# Updated: 2025-10-12
+# Based on comprehensive analysis of modern Usenet spam patterns
+#
+# This configuration enhances the original cleanfeed with:
+# - 2025 spam detection patterns (crypto scams, URL shorteners, malware campaigns)
+# - Gateway abuse detection (bofh.it, fidonet.org, pugleaf.net)
+# - Anonymous remailer/Tor protection (ethical whitelist)
+# - Enhanced rate limiting and scoring
+# - Removal of obsolete rules (Google Groups, pre-2020 spam sources)
+#
+# IMPORTANT: Read README.md before deploying
+
+use strict;
+use warnings;
+
+# ==============================================================================
+# CORE CONFIGURATION - UPDATED THRESHOLDS FOR 2025
+# ==============================================================================
+
+# Crossposting limits (reduced from historical defaults)
+$maxgroups = 8;                          # Maximum newsgroups per post (was 14)
+$low_xpost_maxgroups = 3;                # Strict limit for sensitive hierarchies
+$followup_to_limit = 3;                  # Maximum Followup-To groups
+
+# Breidbart Index (EMP detection) - STILL HIGHLY EFFECTIVE
+$breidbart_threshold = 20;               # BI >= 20 triggers spam cancellation
+$breidbart_window = 45 * 86400;          # 45-day tracking window (seconds)
+
+# Rate limiting and duplicate detection
+$MD5RateCutoff = 3;                      # Reject if same content posted 3+ times
+$PHNRateBaseInterval = 1800;             # 30-minute rate tracking window
+
+# Control message filtering
+$block_late_cancels = 1;                 # Block late cancel messages
+$block_user_cancels = 1;                 # Block user cancel messages
+
+# Scoring filter - RE-ENABLED with retuned thresholds
+$do_scoring_filter = 1;                  # Was 0 (disabled), now enabled for 2025
+$spam_score_threshold = 15;              # Reject if score >= 15
+$suspicious_score_threshold = 8;         # Flag for review if score >= 8
+
+# NEW: Enhanced rate limiting (2025)
+$posts_per_hour_per_host = 30;           # Maximum posts per hour per host
+$posts_per_day_per_from = 100;           # Maximum posts per day per From address
+$new_poster_hourly_limit = 5;            # Conservative limit for first-time posters
+$burst_limit = 10;                       # Maximum posts in 5-minute window
+
+# NEW: URL limits
+$max_urls_in_body = 3;                   # More than 3 URLs is suspicious
+$max_urls_in_subject = 0;                # URLs in subject are spam
+
+# Statistics and logging
+$stats_interval = 300;                   # Statistics update interval (seconds)
+$log_rejected = 1;                       # Log all rejections
+$log_suspicious = 1;                     # Log suspicious posts for review
+$log_anonymous = 1;                      # Log anonymous remailer posts
+$log_gateway = 1;                        # Log gateway posts
+
+# File paths (adjust for your system)
+$active_file = '/path/to/active';        # Active newsgroups file
+$stats_file = '/var/log/cleanfeed/stats.log';
+$emp_dump_file = '/var/log/cleanfeed/emp_dump.log';
+$debug_dir = '/var/log/cleanfeed/debug/';
+
+# ==============================================================================
+# OBSOLETE RULES REMOVED
+# ==============================================================================
+# The following rules have been REMOVED as obsolete for 2025:
+# - Google Groups detection (service ended February 2024)
+# - 'PostIT Now', 'AudioWeb', '@darkshado.ca' (pre-2020 spam sources)
+# - MI5-specific rules (site-specific, not general spam pattern)
+# - Overly aggressive binary detection on all hierarchies
+
+# ==============================================================================
+# URL SHORTENER BLACKLIST (CRITICAL - MALWARE THREAT)
+# ==============================================================================
+# Based on SURBL April 2024 most-abused shorteners
+# STOP ransomware campaign (Jan 2024): 2,667 malicious posts in one day
+
+my @blocked_url_shorteners = qw(
+    bit\.ly
+    6url\.ru
+    tinyurl\.com
+    ow\.ly
+    tiny\.cc
+    goo\.gl
+    migre\.me
+    t\.co
+    bit\.do
+    x\.co
+    miimms\.com
+    jfilte\.com
+    vbooc\.com
+    cutt\.ly
+    rebrand\.ly
+    short\.link
+);
+
+$url_shortener_regex = join('|', @blocked_url_shorteners);
+
+# ==============================================================================
+# MESSAGE-ID SPAM PATTERNS (UPDATED FOR 2025)
+# ==============================================================================
+
+my @spam_msgid_patterns = (
+    qr/^<\d{10,}@/,                      # Pure numeric IDs (tracking spam)
+    qr/^<\d+\-\d+@/,                     # Numeric-dash-numeric pattern
+    qr/msgid[a-z0-9]+\.com>$/i,          # Known spam format
+    qr/none\d+\.yet>$/i,                 # Known spam format
+    qr/<[a-z]{30,}@[a-z]{30,}>/i,        # Excessive random characters
+    qr/<[0-9a-f]{16,}\.[0-9a-f]{16,}@/i, # Tracker-style hexadecimal IDs
+    qr/^<[^@]+>$/,                       # Missing @ sign (malformed)
+    qr/^<@[^>]+>$/,                      # Empty local part (malformed)
+    qr/<.*\s.*>/,                        # Contains whitespace (malformed)
+);
+
+# ==============================================================================
+# MODERN SPAM KEYWORDS (2025)
+# ==============================================================================
+
+my %spam_keywords = (
+    # Cryptocurrency spam (very common in 2024-2025)
+    'bitcoin investment' => 6,
+    'crypto trading bot' => 6,
+    'crypto robot' => 6,
+    'guaranteed returns' => 6,
+    'forex robot' => 6,
+    'forex signal' => 6,
+    'NFT mint' => 6,
+    'NFT airdrop' => 6,
+    'NFT whitelist' => 6,
+    'binary options' => 6,
+
+    # Pharmaceutical spam (still prevalent)
+    'viagra' => 5,
+    'cialis' => 5,
+    'levitra' => 5,
+    'ED pills' => 5,
+    'weight loss pill' => 5,
+    'weight loss miracle' => 5,
+
+    # Phishing patterns
+    'verify your account' => 7,
+    'urgent action required' => 7,
+    'immediate action required' => 7,
+    'suspended account' => 7,
+    'locked account' => 7,
+    'click here to claim' => 7,
+    'click here to verify' => 7,
+
+    # General spam
+    'act now' => 3,
+    'limited time offer' => 3,
+    'order now' => 3,
+    'order today' => 3,
+    'call now' => 3,
+);
+
+# ==============================================================================
+# GATEWAY ABUSE DETECTION (NEW FOR 2025)
+# ==============================================================================
+# Mail-to-news and gateway spam abuse has increased
+
+my %gateway_rules = (
+    'gated-at.bofh.it' => {
+        score_penalty => 3,
+        max_crosspost => 3,
+        max_urls => 2,
+        description => 'Known spam gateway domain',
+    },
+    'fidonet.org' => {
+        score_penalty => 3,
+        max_crosspost => 3,
+        validate_format => qr/^[\w.]+@p\d+\.f\d+\.n\d+\.z\d+\.fidonet\.org$/i,
+        description => 'FidoNet gateway (validate address format)',
+    },
+    'pugleaf.net' => {
+        score_penalty => 2,
+        max_crosspost => 2,
+        rate_limit => 10,  # Posts per hour
+        description => 'Mass distribution network',
+    },
+    'spot.net' => {
+        score_penalty => 2,
+        max_crosspost => 5,
+        allowed_hierarchies => qr/^(alt\.binaries\.|free\.|spot\.)/,
+        description => 'Spot.net indexing system',
+    },
+);
+
+# ==============================================================================
+# ANONYMOUS SERVICE PROTECTION (CRITICAL - WHITELIST)
+# ==============================================================================
+# Protect legitimate anonymous remailers and Tor hidden services
+# These provide essential privacy protections for:
+# - Whistleblowers exposing corruption
+# - Activists in oppressive regimes
+# - Abuse victims seeking help
+# - Privacy advocates exercising free speech rights
+
+my @anonymous_service_patterns = (
+    qr/\.onion$/i,                       # Tor hidden services
+    qr/\bmixmaster\b/i,                  # Mixmaster remailers
+    qr/\bremailer\b/i,                   # Generic remailers
+    qr/@remailer\./i,                    # Remailer domains
+    qr/\banon\./i,                       # Anonymous services
+    qr/@dirge\.harmsk\.com$/i,           # Known remailers
+    qr/@remailer\.frell\.eu\.org$/i,
+    qr/@middleman\.remailer\.online$/i,
+    qr/@milton\.redmv\.net$/i,
+    qr/@yamn\.paranoici\.org$/i,
+    qr/@remailer\.paranoici\.org$/i,
+    qr/@virebent\.art$/i,
+    qr/@mixmin\.net$/i,
+    qr/@yeahno\.net$/i,
+    qr/@dizum\.com$/i,
+    qr/@franxial\.com$/i,
+    qr/senshiremailer\@gmx\.de/i,
+);
+
+# Scoring adjustments for anonymous posts (reduce false positives)
+my %anonymous_adjustments = (
+    missing_references => -2,            # Don't penalize lack of threading
+    suspicious_msgid => -2,              # Don't penalize privacy-focused Message-IDs
+    path_validation => -2,               # Don't penalize anonymized paths
+    minimum_crosspost_reject => 10,      # Higher threshold before rejection
+    minimum_score_reject => 20,          # Higher threshold before rejection
+);
+
+# ==============================================================================
+# BINARY DETECTION - HIERARCHY-SPECIFIC (REFINED)
+# ==============================================================================
+
+# Binary-ALLOWED hierarchies (whitelist)
+my @binary_allowed_hierarchies = (
+    qr/^alt\.binaries\./,
+    qr/^comp\.binaries\./,
+    qr/^free\./,
+    qr/^sci\.data\b/,                    # sci.data allows data sets
+);
+
+# Binary-FORBIDDEN hierarchies (strict enforcement)
+my @binary_forbidden_hierarchies = (
+    qr/^comp\.lang\./,
+    qr/^news\./,
+    qr/^humanities\./,
+    qr/^sci\.(?!data)/,                  # sci.* except sci.data
+    qr/^soc\./,
+    qr/^talk\./,
+    qr/^misc\./,
+);
+
+# Binary encoding detection patterns
+my %binary_patterns = (
+    yenc => qr/^=ybegin /m,
+    yenc_end => qr/^=yend /m,
+    uuencode => qr/^begin \d{3} /m,
+    base64_mime => qr/^Content-Transfer-Encoding:\s*base64/mi,
+    base64_block => qr/^(?:[A-Za-z0-9+\/]{60,}\s*){10,}/m,  # 10+ lines of Base64
+);
+
+# ==============================================================================
+# SUBJECT LINE SCORING PATTERNS
+# ==============================================================================
+
+my %subject_patterns = (
+    # High score (immediate suspicion)
+    qr/\b(viagra|cialis|levitra)\b/i => 6,
+    qr/\b(bitcoin|crypto)\s+investment/i => 6,
+    qr/guaranteed\s+\d+%/i => 6,
+    qr/\$\$\$+/ => 5,
+    qr/!!!{3,}/ => 5,
+
+    # Medium score
+    qr/\d{3}[-.]?\d{3}[-.]?\d{4}/ => 4,  # Phone numbers
+    qr/^[A-Z\s\d!$]{30,}$/ => 4,         # ALL CAPS
+    qr/https?:\/\// => 3,                # URLs in subject
+    qr/buy\s+\w+\s+online/i => 3,
+    qr/\d{10,}/ => 3,                    # Long numeric strings
+
+    # Low score
+    qr/\bfree\b/i => 2,
+    qr/\bclick\s+here\b/i => 2,
+    qr/\bact\s+now\b/i => 2,
+);
+
+# ==============================================================================
+# BODY CONTENT PATTERNS
+# ==============================================================================
+
+my %body_patterns = (
+    # URL shorteners are handled separately in calculate_spam_score()
+    # with balanced approach: 1 = +10, 2 = +20, 3+ = reject
+
+    # Cryptocurrency spam (6 points)
+    qr/bitcoin\s+(?:investment|trading)/i => 6,
+    qr/crypto\s+(?:robot|bot|signal)/i => 6,
+    qr/NFT\s+(?:mint|whitelist|airdrop)/i => 6,
+
+    # Investment scams (6 points)
+    qr/binary\s+options?/i => 6,
+    qr/forex\s+(?:signal|robot)/i => 6,
+    qr/\d+%\s+daily\s+(?:return|profit)/i => 6,
+    qr/guaranteed\s+(?:returns?|profit)/i => 6,
+
+    # Pharmaceutical spam (5 points)
+    qr/\b(?:viagra|cialis|levitra)\b/i => 5,
+    qr/\bED\s+pills?\b/i => 5,
+    qr/weight\s+loss\s+pill/i => 5,
+
+    # Phishing patterns (7 points)
+    qr/verify\s+your\s+account/i => 7,
+    qr/(?:urgent|immediate)\s+action\s+required/i => 7,
+    qr/(?:suspended|locked)\s+account/i => 7,
+    qr/click\s+here\s+to\s+(?:claim|verify|unlock)/i => 7,
+
+    # General spam phrases (3 points)
+    qr/\bact\s+now\b/i => 3,
+    qr/limited\s+time\s+offer/i => 3,
+    qr/order\s+(?:now|today)/i => 3,
+    qr/call\s+\d{3}[-.]?\d{3}[-.]?\d{4}/i => 3,
+);
+
+# ==============================================================================
+# FROM ADDRESS BLACKLIST PATTERNS
+# ==============================================================================
+
+my @from_blacklist_patterns = (
+    # Suspicious patterns (not specific addresses - those go stale quickly)
+    qr/^[\w]{20,}@[\w]{20,}/i,          # Random character strings (both sides)
+    qr/^\d{8,}@/,                        # Numeric usernames (bots)
+    qr/^[a-z]+\d{6,}@/i,                 # Pattern: letters + long numbers
+);
+
+# ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
+# Check if From/Path/Message-ID matches anonymous service
+sub is_anonymous_service {
+    my ($from, $path, $msgid) = @_;
+
+    foreach my $pattern (@anonymous_service_patterns) {
+        if ($from =~ $pattern || $path =~ $pattern || $msgid =~ $pattern) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+# Check if newsgroup allows binary content
+sub is_binary_allowed_group {
+    my ($newsgroups) = @_;
+
+    foreach my $pattern (@binary_allowed_hierarchies) {
+        if ($newsgroups =~ $pattern) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+# Check if newsgroup forbids binary content
+sub is_binary_forbidden_group {
+    my ($newsgroups) = @_;
+
+    foreach my $pattern (@binary_forbidden_hierarchies) {
+        if ($newsgroups =~ $pattern) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+# Detect gateway source
+sub check_gateway_abuse {
+    my ($from, $path, $injection_info, $crosspost_count, $url_count) = @_;
+
+    foreach my $gateway (keys %gateway_rules) {
+        my $rule = $gateway_rules{$gateway};
+
+        if ($from =~ /$gateway/i || $path =~ /$gateway/i || $injection_info =~ /$gateway/i) {
+            # Apply gateway-specific rules
+            if ($crosspost_count > $rule->{max_crosspost}) {
+                return ("REJECT", "Gateway $gateway: excessive crosspost ($crosspost_count groups)");
+            }
+
+            if (defined $rule->{max_urls} && $url_count > $rule->{max_urls}) {
+                return ("REJECT", "Gateway $gateway: too many URLs ($url_count)");
+            }
+
+            if (defined $rule->{validate_format} && $from !~ $rule->{validate_format}) {
+                return ("REJECT", "Gateway $gateway: invalid address format");
+            }
+
+            if (defined $rule->{allowed_hierarchies}) {
+                my $newsgroups = $_[5];  # Additional parameter
+                unless ($newsgroups =~ $rule->{allowed_hierarchies}) {
+                    return ("REJECT", "Gateway $gateway: post outside appropriate hierarchy");
+                }
+            }
+
+            # Return score penalty for gateway
+            return ("SCORE", $rule->{score_penalty}, $gateway);
+        }
+    }
+
+    return ("OK", 0);
+}
+
+# ==============================================================================
+# MAIN SCORING FUNCTION
+# ==============================================================================
+
+sub calculate_spam_score {
+    my ($headers, $body) = @_;
+    my $score = 0;
+    my @reasons = ();
+
+    # Extract key headers
+    my $from = $headers->{From} || '';
+    my $subject = $headers->{Subject} || '';
+    my $msgid = $headers->{'Message-ID'} || '';
+    my $newsgroups = $headers->{Newsgroups} || '';
+    my $path = $headers->{Path} || '';
+    my $injection_info = $headers->{'Injection-Info'} || '';
+    my $references = $headers->{References} || '';
+
+    # Count newsgroups (crossposting)
+    my @groups = split(/,/, $newsgroups);
+    my $crosspost_count = scalar(@groups);
+
+    # Count URLs in body
+    my $url_count = () = $body =~ /https?:\/\//gi;
+
+    # Check if anonymous service (reduces false positives)
+    my $is_anonymous = is_anonymous_service($from, $path, $msgid);
+
+    # --- CRITICAL CHECKS (IMMEDIATE REJECTION) ---
+
+    # 1. URL shorteners (BALANCED APPROACH)
+    # Single shortener may be legitimate (Twitter, business links)
+    # Multiple shorteners or shortener+crosspost = spam pattern
+    if ($body =~ /https?:\/\/(?:$url_shortener_regex)\//i ||
+        $subject =~ /https?:\/\/(?:$url_shortener_regex)\//i) {
+
+        my $shortener_count = () = $body =~ /https?:\/\/(?:$url_shortener_regex)\//gi;
+
+        # Multiple shorteners = likely spam/malware
+        if ($shortener_count >= 3) {
+            return (999, "Multiple URL shorteners detected (spam pattern)");
+        }
+
+        # Shorteners + high crosspost = spam pattern
+        if ($shortener_count >= 2 && $crosspost_count > 5) {
+            return (999, "URL shorteners with excessive crosspost (spam)");
+        }
+
+        # Single or double shortener = high score but not auto-reject
+        # Allows legitimate use while still penalizing
+        $score += 10 * $shortener_count;  # 10 points per shortener
+        push @reasons, "URL shortener detected (count: $shortener_count)";
+    }
+
+    # 2. Known spam Message-ID patterns
+    foreach my $pattern (@spam_msgid_patterns) {
+        if ($msgid =~ $pattern) {
+            return (999, "Known spam Message-ID pattern");
+        }
+    }
+
+    # 3. Forged Gmail (unless anonymous)
+    if (!$is_anonymous && $from =~ /\@gmail\.com$/i &&
+        $injection_info !~ /posting-account=/) {
+        $score += 5;
+        push @reasons, "Unvalidated Gmail address (possible forgery)";
+    }
+
+    # --- CROSSPOSTING PENALTIES ---
+
+    if ($crosspost_count > 8) {
+        $score += ($crosspost_count - 8) * 2;  # 2 points per excess group
+        push @reasons, "Excessive crosspost ($crosspost_count groups)";
+    }
+
+    # --- GATEWAY CHECKS ---
+
+    my ($gw_action, $gw_score, $gw_name) = check_gateway_abuse(
+        $from, $path, $injection_info, $crosspost_count, $url_count, $newsgroups
+    );
+
+    if ($gw_action eq "REJECT") {
+        return (999, $gw_score);
+    } elsif ($gw_action eq "SCORE") {
+        $score += $gw_score;
+        push @reasons, "Gateway source: $gw_name";
+    }
+
+    # --- SUBJECT LINE ANALYSIS ---
+
+    foreach my $pattern (keys %subject_patterns) {
+        if ($subject =~ $pattern) {
+            $score += $subject_patterns{$pattern};
+            push @reasons, "Subject pattern match";
+        }
+    }
+
+    # --- BODY CONTENT ANALYSIS ---
+
+    foreach my $pattern (keys %body_patterns) {
+        if ($body =~ $pattern) {
+            $score += $body_patterns{$pattern};
+            push @reasons, "Body content pattern match";
+        }
+    }
+
+    # --- URL COUNTING ---
+
+    if ($url_count > $max_urls_in_body) {
+        $score += ($url_count - $max_urls_in_body) * 2;
+        push @reasons, "Too many URLs ($url_count)";
+    }
+
+    if ($subject =~ /https?:\/\// && $max_urls_in_subject == 0) {
+        $score += 3;
+        push @reasons, "URL in subject line";
+    }
+
+    # --- MISSING REFERENCES (not threading) ---
+
+    unless ($references || $is_anonymous) {
+        $score += 2;
+        push @reasons, "No References header (not threading)";
+    }
+
+    # --- BINARY DETECTION ---
+
+    my $has_binary = 0;
+    foreach my $encoding (keys %binary_patterns) {
+        if ($body =~ $binary_patterns{$encoding}) {
+            $has_binary = 1;
+            last;
+        }
+    }
+
+    if ($has_binary && is_binary_forbidden_group($newsgroups)) {
+        $score += 10;
+        push @reasons, "Binary content in text-only hierarchy";
+    }
+
+    # --- ALL CAPS DETECTION ---
+
+    my $caps_count = () = $body =~ /[A-Z]/g;
+    my $body_length = length($body);
+    if ($body_length > 0) {
+        my $caps_ratio = $caps_count / $body_length;
+        if ($caps_ratio > 0.6) {
+            $score += 5;
+            push @reasons, "Excessive capitalization";
+        }
+    }
+
+    # --- FROM ADDRESS BLACKLIST ---
+
+    foreach my $pattern (@from_blacklist_patterns) {
+        if ($from =~ $pattern) {
+            $score += 4;
+            push @reasons, "Suspicious From address pattern";
+            last;
+        }
+    }
+
+    # --- ANONYMOUS SERVICE ADJUSTMENTS (reduce false positives) ---
+
+    if ($is_anonymous) {
+        # Remove penalties that don't apply to anonymous posts
+        $score += $anonymous_adjustments{missing_references};
+        $score += $anonymous_adjustments{suspicious_msgid};
+        $score += $anonymous_adjustments{path_validation};
+
+        push @reasons, "Anonymous service (adjusted scoring)";
+
+        # Higher rejection threshold
+        if ($score < $anonymous_adjustments{minimum_score_reject}) {
+            # Don't reject anonymous posts with low scores
+            $score = 0;
+        }
+    }
+
+    my $reason_str = join(", ", @reasons);
+    return ($score, $reason_str);
+}
+
+# ==============================================================================
+# END OF CONFIGURATION
+# ==============================================================================
+
+1;  # Return true for successful loading
 
