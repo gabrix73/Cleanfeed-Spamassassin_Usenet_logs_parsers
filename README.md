@@ -663,4 +663,4 @@ Enhancements (2025 patterns, gateway rules, anonymous protections):
 
 **Updated: 2025-10-12**
 **Maintainer: Your Usenet Server Admin**
-**Contact: abuse@your-server.net**
+**Contact: <A HREF="&#109;&#97;&#105;&#108;&#116;&#111;&#58;%61%62%75%73%65%40%74%63%70%72%65%73%65%74%2E%6E%65%74">abuse@tcpreset.net</a>**
