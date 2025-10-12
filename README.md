@@ -14,7 +14,6 @@ This enhanced version of Cleanfeed brings the classic Usenet spam filter up to d
 - **Critical Security Threats**: URL shortener malware campaigns (STOP ransomware)
 - **Modern Spam Patterns**: Cryptocurrency scams, NFT fraud, investment spam
 - **Gateway Abuse**: Mail-to-news gateway spam (bofh.it, fidonet.org, pugleaf.net)
-- **Privacy Protection**: Enhanced whitelist for Tor and anonymous remailers
 - **Obsolete Rule Removal**: Cleaned up pre-2020 patterns and Google Groups rules
 
 ## 🎯 Key Improvements
@@ -25,7 +24,6 @@ This enhanced version of Cleanfeed brings the classic Usenet spam filter up to d
 2. **Cryptocurrency/NFT Spam Detection** - Patterns for bitcoin investment scams, crypto robots
 3. **Phishing Pattern Detection** - "Verify your account", "suspended account", etc.
 4. **Gateway Abuse Rules** - Enhanced scrutiny for known spam gateways
-5. **Anonymous Service Protection** - Whitelist for 11 remailers + all .onion addresses
 6. **Modern Message-ID Patterns** - Updated tracker ID and numeric spam detection
 7. **Enhanced Rate Limiting** - Multi-level rate controls (per-host, per-From, burst detection)
 8. **Forged Freemail Detection** - Catches forged Gmail/Yahoo/Outlook headers
